@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Alex's Inventory Agent - CI/CD Demo</h2>
+    <title>Alex's Inventory Agent - CI/CD Demo</title>
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
         .msg { padding: 10px 14px; margin: 8px 0; border-radius: 10px; }
@@ -13,7 +13,7 @@
     </style>
 </head>
 <body>
-s
+
 <h2>Alex's Inventory Agent - CI/CD Demo</h2>
 
 {% for message in history %}
@@ -22,7 +22,8 @@ s
 
 <form method="post">
     {% csrf_token %}
-    <input type="text" name="message" placeholder="Ask about the inventory..." autofocus>
+    <input type="text" name="message"
+           placeholder="Ask about the inventory..." autofocus>
     <button type="submit">Send</button>
 </form>
 
