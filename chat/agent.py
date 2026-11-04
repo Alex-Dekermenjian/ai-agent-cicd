@@ -6,7 +6,7 @@ from google import genai
 from .tools import TOOL_DECLARATIONS, TOOL_FUNCTIONS
 
 
-MODEL = "gemini-3.8-flash"
+MODEL = "gemini-3.6-flash"
 
 
 SYSTEM_PROMPT = """You are an inventory assistant for a small hardware warehouse.
