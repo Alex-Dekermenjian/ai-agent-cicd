@@ -1,0 +1,109 @@
+name: CI-CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CONTAINER_NAME: inventory-agent
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+    env:
+      GEMINI_API_KEY: dummy-key-for-ci   # tests never call Gemini, but agent.py needs the variable to exist
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compute lowercase image name
+        id: vars
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:latest" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Run tests
+        run: python manage.py test
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: docker build -t ${{ steps.vars.outputs.image }} .
+
+      - name: Push Docker image
+        run: docker push ${{ steps.vars.outputs.image }}
+
+  deploy:
+    needs: test
+    runs-on: [self-hosted, portfolio-deploy]
+    env:
+      IMAGE: ${{ needs.test.outputs.image }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - name: Check Docker on Windows
+        if: runner.os == 'Windows'
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
+        run: docker info
+
+      - name: Check Docker on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: docker info
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image on Windows
+        if: runner.os == 'Windows'
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
+        run: docker pull --platform linux/amd64 $env:IMAGE
+
+      - name: Pull image on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: docker pull --platform linux/amd64 "$IMAGE"
+
+      - name: Deploy on Windows
+        if: runner.os == 'Windows'
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
+        run: |
+          $existing = docker ps -aq --filter "name=^/$env:CONTAINER_NAME$"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($existing) {
+            docker rm -f $env:CONTAINER_NAME
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          docker run -d --platform linux/amd64 --name $env:CONTAINER_NAME -e GEMINI_API_KEY -p 127.0.0.1:8000:8000 $env:IMAGE
+          exit $LASTEXITCODE
+
+      - name: Deploy on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          existing=$(docker ps -aq --filter "name=^/${CONTAINER_NAME}$")
+          if [ -n "$existing" ]; then
+            docker rm -f "$CONTAINER_NAME"
+          fi
+          docker run -d --platform linux/amd64 --name "$CONTAINER_NAME" -e GEMINI_API_KEY -p 127.0.0.1:8000:8000 "$IMAGE"
